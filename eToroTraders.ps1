@@ -36,7 +36,7 @@ function GetDiscordTradeSection {
 
     if ($Trade.type -eq "CloseTrade") {
         $tradeType = "Close"
-        if ($Trade.gain -gt 0.0) {
+        if ($Trade.gain -ge 0.0) {
             $color = [RGBColors]::Green
         }
         elseif ($Trade.gain -lt 0.0) {
@@ -59,7 +59,7 @@ function GetDiscordTradeSection {
     $thumbnail = New-DiscordThumbnail -Url $trade.symbol.images.'50X50'
     $author = New-DiscordAuthor -Name $trade.user.username -Url ($profilePageUri -f $trade.user.username.ToLower()) -IconUrl $trade.user.avatars.small
     $titleUri = $postPageUri -f $trade.id
-    $title = "{0} {1}" -f $trade.direction, $trade.symbol.marketName
+    $title = "{0} {1} {2}" -f $tradeType, $trade.direction, $trade.symbol.marketName
     
     $marketUri = $marketsUri -f $trade.symbol.name
     $marketValue = "[{0}]({1})" -f $trade.symbol.displayName, $marketUri
@@ -70,7 +70,9 @@ function GetDiscordTradeSection {
     $leverageFact = New-DiscordFact -Name "Leverage" -Value $trade.leverage -Inline $true
     $categoryFact = New-DiscordFact -Name "Category" -Value $trade.symbol.type -Inline $true
 
-    New-DiscordSection -Title $title -Description "" -Url $titleUri -Facts $rateFact, $directionFact, $leverageFact, $marketFact, $categoryFact -Color:$color -Thumbnail $thumbnail -Author $author
+    $facts = $rateFact, $directionFact, $leverageFact, $marketFact, $categoryFact, $gainFact | Where-Object { $null -ne $_ }
+
+    New-DiscordSection -Title $title -Description "" -Url $titleUri -Facts $facts -Color:$color -Thumbnail $thumbnail -Author $author
 }
 
 function GetTrades {
@@ -120,9 +122,9 @@ foreach ($trader in $traders) {
     }
 
     $trades = $request.Content | ConvertFrom-Json
-    $newTrades = $trades | Where-Object { $_.positionid -notin $savedTrades.positionid }
+    $newTrades = $trades | Where-Object { $_.id -notin $savedTrades.id }
 
-    if ($newTrades.Length -eq 0) {
+    if (-not $newTrades) {
         Log -Message ("No new trades for user: {0}" -f $trader)
         continue
     }
