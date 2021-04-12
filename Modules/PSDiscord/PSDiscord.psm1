@@ -8,26 +8,28 @@ function Get-DiscordConfig {
 
     if (Test-Path -Path $PathXML) {
         $Configuration = Import-Clixml -Path $PathXML
-        if ($null -ne $Configuration.$Name) {
-            return $Configuration.$Name
+        if ($null -ne $Configuration) {
+            return $Configuration
         }
     }
-    return $null
+    return @{}
 }
 function Initialize-DiscordConfig {
     [CmdletBinding()]
     param(
         [string] $Name = 'Primary',
-        [Uri] $URI
+        [Uri] $URI,
+        [PSCustomObject] $Configuration
     )
     [string] $Path = [IO.Path]::Combine($Env:USERPROFILE, '.psdiscord')
     [string] $PathXML = [IO.Path]::Combine($Path, "config.xml")
     # Creates required folder
 
-    $Configuration = @{}
     $Configuration.$Name = $URI
 
-    $null = New-Item -Path $Path -ItemType Directory -Force
+    if (-not (Test-Path -Path $PathXML)) {
+        $null = New-Item -Path $Path -ItemType Directory
+    }
     Export-Clixml -Path $PathXML -InputObject $Configuration -Force
 }
 function New-DiscordAuthor {
@@ -136,14 +138,15 @@ function Send-DiscordMessage {
     if ([string]::IsNullOrEmpty($ConfigName)) {
         $ConfigName = 'Primary'
     }
+    $Configuration = Get-DiscordConfig -Name $ConfigName
     if (-not $WebHookUrl) {
-        $WebHookUrl = Get-DiscordConfig -Name $ConfigName
+        $WebHookUrl = $Configuration.$ConfigName
     }
     if ($null -eq $WebHookUrl) {
         Write-Warning 'Send-DiscordMessage - WebhookUrl is not set. Either provide it as parameter or initialize it with config.'
     }
     if ($CreateConfig) {
-        Initialize-DiscordConfig -Name $ConfigName -URI $WebHookUrl
+        Initialize-DiscordConfig -Name $ConfigName -URI $WebHookUrl -Configuration $Configuration
     }
     $FullMessage = [ordered] @{
         "embeds" = @()

@@ -5,8 +5,8 @@ $referrerUri = $profilePageUri + "/portfolio"
 $tradesUri = "https://www.etoro.com/api/streams/v2/streams/user-trades/{0}"
 $workingDir = Split-Path $PSCommandPath -Parent
 $logFile = Join-Path $workingDir (((Split-Path $PSCommandPath -Leaf) -split '\.')[0] + ".log")
-
-$traders = (Get-Content (Join-Path $PSScriptRoot eToroConfig.json) | ConvertFrom-Json).traders
+$perRunInterval = 600
+$perTraderInterval = 60
 
 $modules = Join-Path $PSScriptRoot 'Modules'
 if (-not $env:PSModulePath.Contains($modules)) {
@@ -22,7 +22,7 @@ function Log {
         [string]
         $Message
     )
-    $Message | Out-File -FilePath $logFile -Append
+    '[{0}] {1}' -f [DateTime]::Now, $Message | Out-File -FilePath $logFile -Append
 }
 
 function GetDiscordTradeSection {
@@ -54,14 +54,12 @@ function GetDiscordTradeSection {
         }
     }
 
-
-
     $thumbnail = New-DiscordThumbnail -Url $trade.symbol.images.'50X50'
     $author = New-DiscordAuthor -Name $trade.user.username -Url ($profilePageUri -f $trade.user.username.ToLower()) -IconUrl $trade.user.avatars.small
     $titleUri = $postPageUri -f $trade.id
     $title = "{0} {1} {2}" -f $tradeType, $trade.direction, $trade.symbol.marketName
     
-    $marketUri = $marketsUri -f $trade.symbol.name
+    $marketUri = $marketsUri -f ($trade.symbol.name.Replace("-", ""))
     $marketValue = "[{0}]({1})" -f $trade.symbol.displayName, $marketUri
 
     $marketFact = New-DiscordFact -Name "Market" -Value $marketValue -Inline $true
@@ -95,52 +93,57 @@ function GetTrades {
 }
 
 $sections = [Collections.ArrayList]@()
-$hasrun = $false
 
-foreach ($trader in $traders) {
-    if ($hasrun) {
-        Start-Sleep -Seconds 60
-    }
-    $savedTradesFile = Join-Path $workingDir ("traders/{0}.json" -f $trader)
-    $savedTrades = $null
-    if (Test-Path $savedTradesFile) {
-        $savedTrades = Get-Content $savedTradesFile | ConvertFrom-Json
-    }
-
-    $request = GetTrades $trader
-    $hasrun = $true
+while ($true) {
+    $traders = (Get-Content (Join-Path $PSScriptRoot eToroConfig.json) | ConvertFrom-Json).traders
+    $hasrun = $false
     
-    if ($request.StatusCode -ne "200") {
-        Log -Message ("Skipping trader due to failed fetch: {0}" -f $trader)
-        continue
-    }
-
-    $request.Content | Out-File $savedTradesFile
-
-    if ($null -eq $savedTrades) {
-        continue
-    }
-
-    $trades = $request.Content | ConvertFrom-Json
-    $newTrades = $trades | Where-Object { $_.id -notin $savedTrades.id }
-
-    if (-not $newTrades) {
-        Log -Message ("No new trades for user: {0}" -f $trader)
-        continue
-    }
-
-    foreach ($trade in $newTrades) {
-        $t = GetDiscordTradeSection -Trade $trade
-        $sections.Add($t) | Out-Null
-
-        if ($sections.Count -ge 10) {
-            Send-DiscordMessage -ConfigName etorobot -Sections $sections
+    foreach ($trader in $traders) {
+        if ($hasrun) {
+            Start-Sleep -Seconds $perTraderInterval
+        }
+        $savedTradesFile = Join-Path $workingDir ("traders/{0}.json" -f $trader)
+        $savedTrades = $null
+        if (Test-Path $savedTradesFile) {
+            $savedTrades = Get-Content $savedTradesFile | ConvertFrom-Json
+        }
+    
+        $request = GetTrades $trader
+        $hasrun = $true
+        
+        if ($request.StatusCode -ne "200") {
+            Log -Message ("Skipping trader due to failed fetch: {0}" -f $trader)
+            continue
+        }
+    
+        $request.Content | Out-File $savedTradesFile
+    
+        if ($null -eq $savedTrades) {
+            continue
+        }
+    
+        $trades = $request.Content | ConvertFrom-Json
+        $newTrades = $trades | Where-Object { $_.id -notin $savedTrades.id }
+    
+        if (-not $newTrades) {
+            Log -Message ("No new trades for user: {0}" -f $trader)
+            continue
+        }
+    
+        foreach ($trade in $newTrades) {
+            $t = GetDiscordTradeSection -Trade $trade
+            $sections.Add($t) | Out-Null
+    
+            if ($sections.Count -ge 10) {
+                Send-DiscordMessage -ConfigName $trader -Sections $sections
+                $sections.Clear()
+            }
+        }
+    
+        if ($sections.Count -gt 0) {
+            Send-DiscordMessage -ConfigName $trader -Sections $sections
             $sections.Clear()
         }
     }
-
-    if ($sections.Count -gt 0) {
-        Send-DiscordMessage -ConfigName etorobot -Sections $sections
-        $sections.Clear()
-    }
+    Start-Sleep -Seconds $perRunInterval
 }
