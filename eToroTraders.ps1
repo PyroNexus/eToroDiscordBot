@@ -108,7 +108,12 @@ function GetTrades {
     }
     $uri = $tradesUri -f $trader
     $proxyuri = "https://nl.hideproxy.me/includes/process.php?action=update"
-    $request = Invoke-WebRequest -Method POST -Uri $proxyuri -Headers $headers -Body @{u = $uri} -UseBasicParsing
+    $request = try {
+        Invoke-WebRequest -Method POST -Uri $proxyuri -Headers $headers -Body @{u = $uri} -UseBasicParsing
+    }
+    catch {
+        Log -Message ("Error while grabbing trades for user '{0}': {1}" -f $trader, $_.Exception.Response.StatusDescription)
+    }
 
     Log -Message ("HTTP status code was: {0}" -f $request.StatusCode)
 
