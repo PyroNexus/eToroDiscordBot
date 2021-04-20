@@ -1,4 +1,3 @@
-$modules = Join-Path $PSScriptRoot 'Modules'
-if (-not $env:PSModulePath.Contains($modules)) {
-    $env:PSModulePath = $env:PSModulePath + ";" + $modules
-}
+Import-Module ./Modules/PSWriteColor/PSWriteColor.psd1
+Import-Module ./Modules/PSSharedGoods/PSSharedGoods.psd1
+Import-Module ./Modules/PSDiscord/PSDiscord.psd1
