@@ -3,12 +3,12 @@
 $profilePageUri = "https://www.etoro.com/people/{0}"
 $postPageUri = "https://www.etoro.com/posts/{0}"
 $marketsUri = "https://www.etoro.com/markets/{0}"
-$tradesUri = "https://www.etoro.com/api/streams/v2/streams/user-trades/{0}"
 $workingDir = Split-Path $PSCommandPath -Parent
 $logFile = Join-Path $workingDir (((Split-Path $PSCommandPath -Leaf) -split '\.')[0] + ".log")
 $perRunInterval = 600
 $perTraderInterval = 60
 $minTrades = 20
+$traderCache = "C:\eToroScraper\TraderCache\"
 
 Import-Module ./Modules/PSWriteColor/PSWriteColor.psd1
 Import-Module ./Modules/PSSharedGoods/PSSharedGoods.psd1
@@ -97,28 +97,13 @@ function GetTrades {
         [ValidateNotNullOrEmpty()]
         [string] $trader
     )
-    $headers = @{
-        "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.152 Safari/537.36"
-        "Referrer" = "https://hide.me/en/proxy"
-    }
-    $uri = $tradesUri -f $trader
-    $proxyuri = "https://nl.hideproxy.me/includes/process.php?action=update"
-    $request = try {
-        Invoke-WebRequest -Method POST -Uri $proxyuri -Headers $headers -Body @{u = $uri} -UseBasicParsing
-    }
-    catch {
-        Log -Message ("Error while grabbing trades for user '{0}': {1}" -f $trader, $_.Exception.Response.StatusDescription)
-    }
-
-    Log -Message ("HTTP status code was: {0}" -f $request.StatusCode)
-
-    return $request
+    return Get-Content (Join-Path $traderCache $trader.json)
 }
 
 $sections = [Collections.ArrayList]@()
 
 while ($true) {
-    $traders = (Get-Content (Join-Path $PSScriptRoot eToroConfig.json) | ConvertFrom-Json).traders
+    $traders = (Get-ChildItem $traderCache -Filter *.json).Name
     $hasrun = $false
 
     foreach ($trader in $traders) {
@@ -127,6 +112,7 @@ while ($true) {
         $trades = $null
         $newTrades = $null
         $sections.Clear()
+        $trader = $trader.Split(".")[0]
 
         if ($hasrun) {
             Start-Sleep -Seconds $perTraderInterval
@@ -148,16 +134,11 @@ while ($true) {
         $request = GetTrades $trader
         $hasrun = $true
 
-        if ($request.StatusCode -ne "200") {
-            Log -Message ("Skipping trader due to failed fetch: {0}" -f $trader)
-            continue
-        }
-
         try {
-            $trades = $request.Content | ConvertFrom-Json
+            $trades = $request | ConvertFrom-Json
         }
         catch {
-            Log -Message ("Not processing http response for trader '{0}' because the response could not be processed as valid JSON by the parser" -f $trader)
+            Log -Message ("Not processing json for trader '{0}' because it is not valid JSON" -f $trader)
             continue
         }
 
@@ -178,7 +159,7 @@ while ($true) {
             continue
         }
 
-        $request.Content | Out-File $savedTradesFile
+        $request | Out-File $savedTradesFile
 
         if ($null -eq $savedTrades) {
             continue
