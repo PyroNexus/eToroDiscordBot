@@ -97,7 +97,7 @@ function GetTrades {
         [ValidateNotNullOrEmpty()]
         [string] $trader
     )
-    return Get-Content (Join-Path $traderCache $trader.json)
+    return Get-Content (Join-Path $traderCache "$trader.json")
 }
 
 $sections = [Collections.ArrayList]@()
@@ -152,7 +152,7 @@ while ($true) {
             continue
         }
 
-        $newTrades = $trades | Where-Object { $_.id -notin $savedTrades.id }
+        $newTrades = $trades | Where-Object { $_.id -notin $savedTrades.id } | Group-Object -Property positionID, type
 
         if (-not $newTrades -or $newTrades.Count -eq 0) {
             Log -Message ("No new trades for user: '{0}'" -f $trader)
@@ -166,7 +166,7 @@ while ($true) {
         }
 
         foreach ($trade in $newTrades) {
-            $t = GetDiscordTradeSection -Trade $trade
+            $t = GetDiscordTradeSection -Trade $trade.Group[0]
             if ($null -eq $t) {
                 continue
             }
